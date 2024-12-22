@@ -12,8 +12,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/anaheim/property-service/opencage"
-	"github.com/anaheim/property-service/school"
+	"github.com/ssh-keyz/property-details/opencage"
+	"github.com/ssh-keyz/property-details/school"
 	"golang.org/x/text/cases"
 	"golang.org/x/text/language"
 )
@@ -256,14 +256,14 @@ func (s *Service) getNearbySchools(coords *Coordinates) ([]School, error) {
 			continue
 		}
 
-		if !areValidCoordinates(schoolLat, schoolLon) {
+		if !AreValidCoordinates(schoolLat, schoolLon) {
 			fmt.Printf("Skipping school %s: invalid coordinates (%f,%f)\n",
 				element.Tags.Name, schoolLat, schoolLon)
 			continue
 		}
 
-		distance := calculateDistance(coords.Lat, coords.Lon, schoolLat, schoolLon)
-		schoolType := determineSchoolType(element.Tags)
+		distance := CalculateDistance(coords.Lat, coords.Lon, schoolLat, schoolLon)
+		schoolType := DetermineSchoolType(element.Tags)
 		rating := determineSchoolRating(element.Tags)
 
 		school := School{
@@ -281,13 +281,13 @@ func (s *Service) getNearbySchools(coords *Coordinates) ([]School, error) {
 
 // Helper functions
 
-func areValidCoordinates(lat, lon float64) bool {
+func AreValidCoordinates(lat, lon float64) bool {
 	return lat != 0 && lon != 0 &&
 		lat >= -90 && lat <= 90 &&
 		lon >= -180 && lon <= 180
 }
 
-func determineSchoolType(tags school.Tags) string {
+func DetermineSchoolType(tags school.Tags) string {
 	caser := cases.Title(language.English)
 
 	if tags.School != "school" {
@@ -326,7 +326,7 @@ func determineSchoolRating(tags school.Tags) float64 {
 	return mockSchoolRating(tags.Name)
 }
 
-func calculateDistance(lat1, lon1, lat2, lon2 float64) float64 {
+func CalculateDistance(lat1, lon1, lat2, lon2 float64) float64 {
 	const R = 6371.0
 
 	lat1Rad := lat1 * math.Pi / 180

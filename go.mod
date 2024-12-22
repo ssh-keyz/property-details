@@ -1,5 +1,5 @@
-module github.com/anaheim/property-service
+module github.com/ssh-keyz/property-details
 
 go 1.21
 
-require golang.org/x/text v0.21.0 // indirect
+require golang.org/x/text v0.21.0

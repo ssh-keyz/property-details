@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/anaheim/property-service/property"
+	"github.com/ssh-keyz/property-details/property"
 )
 
 func main() {
