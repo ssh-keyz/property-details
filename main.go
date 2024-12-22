@@ -4,6 +4,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"net/http"
 	"net/url"
 	"os"
@@ -43,6 +44,17 @@ type School struct {
 	Type     string  `json:"type"`
 }
 
+type SchoolTags struct {
+	Name           string `json:"name"`
+	SchoolType     string `json:"school:type"`
+	IsrcRating     string `json:"isced:rating"`
+	School         string `json:"school"`
+	SchoolCategory string `json:"school:category"`
+	SchoolLevel    string `json:"school:level"`
+	Education      string `json:"education"`
+	EducationType  string `json:"education_type"`
+}
+
 func NewPropertyService() *PropertyService {
 	return &PropertyService{
 		httpClient: &http.Client{
@@ -76,6 +88,9 @@ func (s *PropertyService) ValidateAddress(address string) error {
 	return nil
 }
 
+// Zillow API (limited free tier): Property details, valuations, Requires registration, Rate limits apply
+// Attom Data Solutions API: Property characteristics, assessments, Free trial available, Good documentation
+// APIfy for Realtor.com: Scrape property details, sold properties, rental properties, scrape by keyword, by filter
 func (s *PropertyService) GetPropertyInfo(address string) (*PropertyInfo, error) {
 	if err := s.ValidateAddress(address); err != nil {
 		return nil, fmt.Errorf("address validation failed: %w", err)
@@ -86,7 +101,7 @@ func (s *PropertyService) GetPropertyInfo(address string) (*PropertyInfo, error)
 		return nil, fmt.Errorf("geocoding failed: %w", err)
 	}
 
-	details, err := s.getPropertyDetails(coords)
+	details, err := s.getPropertyDetails(address)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get property details: %w", err)
 	}
@@ -151,16 +166,11 @@ func (s *PropertyService) geocodeAddress(address string) (*Coordinates, error) {
 	}, nil
 }
 
-func (s *PropertyService) getPropertyDetails(coords *Coordinates) (*PropertyDetails, error) {
+func (s *PropertyService) getPropertyDetails(address string) (*PropertyDetails, error) {
 	endpoint := fmt.Sprintf(
-		"https://api.opencagedata.com/geocode/v1/json?q=%f+%f&key=%s",
-		coords.Lat, coords.Lon, os.Getenv("OPENCAGE_API_KEY"),
+		"https://api.opencagedata.com/geocode/v1/json?q=%s&key=%s",
+		url.QueryEscape(address), os.Getenv("OPENCAGE_API_KEY"),
 	)
-
-	// endpoint := fmt.Sprintf(
-	// 	"https://api.opencagedata.com/geocode/v1/json?q=%f+%f&key=%s",
-	// 	coords.Lat, coords.Lon, "97d4254c990844bfa9edbd65c5b4fd1b",
-	// )
 
 	req, err := http.NewRequest("GET", endpoint, nil)
 	if err != nil {
@@ -173,18 +183,65 @@ func (s *PropertyService) getPropertyDetails(coords *Coordinates) (*PropertyDeta
 	}
 	defer resp.Body.Close()
 
-	var result struct {
-		Results []struct {
-			Components struct {
-				Type        string `json:"type"`
-				BuildingUse string `json:"building"`
-				HouseNumber string `json:"house_number"`
-			} `json:"components"`
-		} `json:"results"`
+	// First read the raw response for debugging
+	var rawResponse map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&rawResponse); err != nil {
+		return nil, fmt.Errorf("failed to decode raw response: %w", err)
 	}
 
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return nil, fmt.Errorf("failed to decode response: %w", err)
+	// Print the raw response for debugging
+	rawJSON, _ := json.MarshalIndent(rawResponse, "", "  ")
+	fmt.Printf("OpenCage API Response:\n%s\n", rawJSON)
+
+	// Now parse into our structured format
+	var result struct {
+		Results []struct {
+			Confidence int `json:"confidence"`
+			Components struct {
+				Type           string `json:"type"`
+				Category       string `json:"category"`
+				BuildingUse    string `json:"building"`
+				HouseNumber    string `json:"house_number"`
+				Road           string `json:"road"`
+				Suburb         string `json:"suburb"`
+				City           string `json:"city"`
+				State          string `json:"state"`
+				Postcode       string `json:"postcode"`
+				Country        string `json:"country"`
+				BuildingLevels string `json:"building:levels"`
+				Residential    string `json:"residential"`
+				Apartments     string `json:"apartments"`
+			} `json:"components"`
+			Formatted string `json:"formatted"`
+			Geometry  struct {
+				Lat float64 `json:"lat"`
+				Lng float64 `json:"lng"`
+			} `json:"geometry"`
+			Annotations struct {
+				Timezone struct {
+					Name string `json:"name"`
+				} `json:"timezone"`
+				Roadinfo struct {
+					SpeedLimit string `json:"speed_limit"`
+					Surface    string `json:"surface"`
+				} `json:"roadinfo"`
+				OSM struct {
+					BuildingLevels string `json:"building:levels"`
+					Amenity        string `json:"amenity"`
+					BuildingType   string `json:"building"`
+				} `json:"OSM"`
+			} `json:"annotations"`
+		} `json:"results"`
+		Status struct {
+			Code    int    `json:"code"`
+			Message string `json:"message"`
+		} `json:"status"`
+	}
+
+	// Reset the response body with the raw data for parsing
+	rawJSON, _ = json.Marshal(rawResponse)
+	if err := json.Unmarshal(rawJSON, &result); err != nil {
+		return nil, fmt.Errorf("failed to parse structured response: %w", err)
 	}
 
 	// Default values when data is unavailable
@@ -196,9 +253,66 @@ func (s *PropertyService) getPropertyDetails(coords *Coordinates) (*PropertyDeta
 	}
 
 	if len(result.Results) > 0 {
-		// Populate available data
-		if result.Results[0].Components.Type == "residential" {
+		components := result.Results[0].Components
+		annotations := result.Results[0].Annotations
+
+		// Build a comprehensive size description
+		sizeDetails := []string{}
+
+		// Check building type
+		if components.Type == "residential" || components.Category == "building" {
+			if components.BuildingUse != "" {
+				sizeDetails = append(sizeDetails, components.BuildingUse)
+			}
+			if components.Type != "" {
+				sizeDetails = append(sizeDetails, components.Type)
+			}
+		}
+
+		// Add number of levels if available
+		if components.BuildingLevels != "" {
+			sizeDetails = append(sizeDetails, fmt.Sprintf("%s stories", components.BuildingLevels))
+		} else if annotations.OSM.BuildingLevels != "" {
+			sizeDetails = append(sizeDetails, fmt.Sprintf("%s stories", annotations.OSM.BuildingLevels))
+		}
+
+		// Check if it's an apartment
+		if components.Apartments != "" {
+			sizeDetails = append(sizeDetails, "apartment building")
+		}
+
+		// Set the size description
+		if len(sizeDetails) > 0 {
+			details.Size = strings.Join(sizeDetails, " ")
+		} else {
 			details.Size = "Residential Property"
+		}
+
+		// Estimate rooms based on building levels
+		if levels, err := strconv.Atoi(components.BuildingLevels); err == nil && levels > 0 {
+			// Rough estimate: 2 rooms per level for residential buildings
+			details.Rooms = levels * 2
+		}
+
+		// For debugging
+		// fmt.Printf("Property Components:\n")
+		// fmt.Printf("  Type: %s\n", components.Type)
+		// fmt.Printf("  Category: %s\n", components.Category)
+		// fmt.Printf("  BuildingUse: %s\n", components.BuildingUse)
+		// fmt.Printf("  Building Levels: %s\n", components.BuildingLevels)
+		// fmt.Printf("  Apartments: %s\n", components.Apartments)
+		// fmt.Printf("  Address: %s %s, %s, %s %s\n",
+		// 	components.HouseNumber,
+		// 	components.Road,
+		// 	components.City,
+		// 	components.State,
+		// 	components.Postcode)
+
+		if annotations.OSM.BuildingType != "" {
+			fmt.Printf("  OSM Building Type: %s\n", annotations.OSM.BuildingType)
+		}
+		if annotations.OSM.BuildingLevels != "" {
+			fmt.Printf("  OSM Building Levels: %s\n", annotations.OSM.BuildingLevels)
 		}
 	}
 
@@ -206,15 +320,16 @@ func (s *PropertyService) getPropertyDetails(coords *Coordinates) (*PropertyDeta
 }
 
 func (s *PropertyService) getNearbySchools(coords *Coordinates) ([]School, error) {
+	// First query to get schools
 	query := fmt.Sprintf(
 		`[out:json][timeout:25];
         (
             way["amenity"="school"]["name"](around:2000,%f,%f);
             relation["amenity"="school"]["name"](around:2000,%f,%f);
+            node["amenity"="school"]["name"](around:2000,%f,%f);
         );
-        out body;
-        >;
-        out skel qt;`,
+        out center;`, // Use 'out center' to get center points for ways and relations
+		coords.Lat, coords.Lon,
 		coords.Lat, coords.Lon,
 		coords.Lat, coords.Lon,
 	)
@@ -226,20 +341,33 @@ func (s *PropertyService) getNearbySchools(coords *Coordinates) ([]School, error
 	}
 	defer resp.Body.Close()
 
+	// First read the raw response for debugging
+	var rawResponse map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&rawResponse); err != nil {
+		return nil, fmt.Errorf("failed to decode raw response: %w", err)
+	}
+
+	// Print the raw response for debugging
+	rawJSON, _ := json.MarshalIndent(rawResponse, "", "  ")
+	fmt.Printf("Overpass API Response:\n%s\n", rawJSON)
+
 	var result struct {
 		Elements []struct {
-			Tags struct {
-				Name       string `json:"name"`
-				SchoolType string `json:"school:type"`
-				IsrcRating string `json:"isced:rating"`
-			} `json:"tags"`
-			Lat float64 `json:"lat"`
-			Lon float64 `json:"lon"`
+			Type   string     `json:"type"`
+			Tags   SchoolTags `json:"tags"`
+			Lat    float64    `json:"lat"`
+			Lon    float64    `json:"lon"`
+			Center *struct {  // Center coordinates for ways and relations
+				Lat float64 `json:"lat"`
+				Lon float64 `json:"lon"`
+			} `json:"center"`
 		} `json:"elements"`
 	}
 
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return nil, fmt.Errorf("failed to decode response: %w", err)
+	// Reset the response body with the raw data for parsing
+	rawJSON, _ = json.Marshal(rawResponse)
+	if err := json.Unmarshal(rawJSON, &result); err != nil {
+		return nil, fmt.Errorf("failed to parse structured response: %w", err)
 	}
 
 	schools := make([]School, 0)
@@ -248,67 +376,144 @@ func (s *PropertyService) getNearbySchools(coords *Coordinates) ([]School, error
 			continue
 		}
 
-		distance := calculateDistance(coords.Lat, coords.Lon, element.Lat, element.Lon)
+		// Get the correct coordinates based on element type
+		var schoolLat, schoolLon float64
+		if element.Type == "node" {
+			schoolLat = element.Lat
+			schoolLon = element.Lon
+		} else if element.Center != nil {
+			// Use center coordinates for ways and relations
+			schoolLat = element.Center.Lat
+			schoolLon = element.Center.Lon
+		} else {
+			// Skip if we can't determine coordinates
+			fmt.Printf("Skipping school %s: no valid coordinates\n", element.Tags.Name)
+			continue
+		}
+
+		// Skip if coordinates are invalid (0,0 or out of range)
+		if !areValidCoordinates(schoolLat, schoolLon) {
+			fmt.Printf("Skipping school %s: invalid coordinates (%f,%f)\n",
+				element.Tags.Name, schoolLat, schoolLon)
+			continue
+		}
+
+		// Calculate direct distance using haversine formula
+		distance := calculateDistance(coords.Lat, coords.Lon, schoolLat, schoolLon)
+
+		// Determine school type from various possible tags
+		schoolType := determineSchoolType(element.Tags)
+
+		// Parse rating - OSM typically uses values 1-5
+		rating := determineSchoolRating(element.Tags)
 
 		school := School{
 			Name:     element.Tags.Name,
 			Distance: distance,
-			Rating:   parseRating(element.Tags.IsrcRating),
-			Type:     parseSchoolType(element.Tags.SchoolType),
+			Rating:   rating,
+			Type:     schoolType,
 		}
+
+		// Debug information
+		fmt.Printf("School Found:\n")
+		fmt.Printf("  Name: %s\n", school.Name)
+		fmt.Printf("  Type: %s (%s)\n", element.Type, school.Type)
+		fmt.Printf("  Coordinates: %.6f,%.6f\n", schoolLat, schoolLon)
+		fmt.Printf("  Distance: %.2f km\n", school.Distance)
+		fmt.Printf("  Rating: %.1f\n", school.Rating)
+		fmt.Printf("  Raw Tags: %+v\n", element.Tags)
+
 		schools = append(schools, school)
 	}
 
 	return schools, nil
 }
 
+// Helper function to validate coordinates
+func areValidCoordinates(lat, lon float64) bool {
+	return lat != 0 && lon != 0 && // Not null island
+		lat >= -90 && lat <= 90 && // Valid latitude range
+		lon >= -180 && lon <= 180 // Valid longitude range
+}
+
+func determineSchoolType(tags SchoolTags) string {
+	// Check various OSM tags that might indicate school type
+	if tags.SchoolType != "" {
+		return strings.Title(tags.SchoolType)
+	}
+	if tags.SchoolLevel != "" {
+		return strings.Title(tags.SchoolLevel)
+	}
+	if tags.SchoolCategory != "" {
+		return strings.Title(tags.SchoolCategory)
+	}
+	if tags.Education != "" {
+		return strings.Title(tags.Education)
+	}
+	if tags.EducationType != "" {
+		return strings.Title(tags.EducationType)
+	}
+	if tags.School != "" {
+		return strings.Title(tags.School)
+	}
+	return "Unknown"
+}
+
+func determineSchoolRating(tags SchoolTags) float64 {
+	if tags.IsrcRating != "" {
+		if rating, err := strconv.ParseFloat(tags.IsrcRating, 64); err == nil {
+			// Normalize rating to 0-5 scale if needed
+			if rating > 5 {
+				return 5.0
+			}
+			return rating
+		}
+	}
+	return 0 // Default rating when not available
+}
+
+// calculateDistance calculates the shortest distance between two points on Earth's surface using the haversine formula.
+//
+// The haversine formula determines the great-circle distance between two points on a sphere
+// given their latitudes and longitudes. This is the shortest distance over the Earth's surface,
+// ignoring terrain, elevation differences, and obstacles.
+//
+// Parameters:
+//   - lat1: Latitude of the first point in decimal degrees
+//   - lon1: Longitude of the first point in decimal degrees
+//   - lat2: Latitude of the second point in decimal degrees
+//   - lon2: Longitude of the second point in decimal degrees
+//
+// Returns:
+//   - The distance between the points in kilometers, rounded to 2 decimal places
+//
+// Note: This implementation uses the Earth's mean radius of 6371.0 kilometers.
+// The accuracy of this calculation decreases for very small distances and near the poles.
+// It may be better to use OSRM for more accurate routing.
+//
+//	More information here: https://www.nextmv.io/blog/haversine-vs-osrm-distance-and-cost-experiments-on-a-vehicle-routing-problem-vrp
 func calculateDistance(lat1, lon1, lat2, lon2 float64) float64 {
-	endpoint := fmt.Sprintf(
-		"https://router.project-osrm.org/route/v1/driving/%f,%f;%f,%f?overview=false",
-		lon1, lat1, // OSRM expects coordinates in lon,lat order
-		lon2, lat2,
-	)
+	const R = 6371.0 // Earth's radius in kilometers
 
-	resp, err := http.Get(endpoint)
-	if err != nil {
-		return 0
-	}
-	defer resp.Body.Close()
+	// Convert degrees to radians
+	lat1Rad := lat1 * math.Pi / 180
+	lon1Rad := lon1 * math.Pi / 180
+	lat2Rad := lat2 * math.Pi / 180
+	lon2Rad := lon2 * math.Pi / 180
 
-	var result struct {
-		Routes []struct {
-			Distance float64 `json:"distance"`
-		} `json:"routes"`
-	}
+	// Differences in coordinates
+	dLat := lat2Rad - lat1Rad
+	dLon := lon2Rad - lon1Rad
 
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return 0
-	}
+	// Haversine formula
+	a := math.Sin(dLat/2)*math.Sin(dLat/2) +
+		math.Cos(lat1Rad)*math.Cos(lat2Rad)*
+			math.Sin(dLon/2)*math.Sin(dLon/2)
+	c := 2 * math.Atan2(math.Sqrt(a), math.Sqrt(1-a))
+	distance := R * c
 
-	if len(result.Routes) == 0 {
-		return 0
-	}
-
-	// Convert meters to miles
-	return result.Routes[0].Distance / 1609.34
-}
-
-func parseRating(rating string) float64 {
-	if rating == "" {
-		return 0
-	}
-	r, err := strconv.ParseFloat(rating, 64)
-	if err != nil {
-		return 0
-	}
-	return r
-}
-
-func parseSchoolType(schoolType string) string {
-	if schoolType == "" {
-		return "Unknown"
-	}
-	return strings.Title(schoolType)
+	// Round to 2 decimal places
+	return math.Round(distance*100) / 100
 }
 
 func main() {
