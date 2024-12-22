@@ -12,6 +12,9 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"golang.org/x/text/cases"
+	"golang.org/x/text/language"
 )
 
 type PropertyService struct {
@@ -437,24 +440,25 @@ func areValidCoordinates(lat, lon float64) bool {
 }
 
 func determineSchoolType(tags SchoolTags) string {
+	caser := cases.Title(language.English)
 	// Check various OSM tags that might indicate school type
 	if tags.SchoolType != "" {
-		return strings.Title(tags.SchoolType)
+		return caser.String(tags.SchoolType)
 	}
 	if tags.SchoolLevel != "" {
-		return strings.Title(tags.SchoolLevel)
+		return caser.String(tags.SchoolLevel)
 	}
 	if tags.SchoolCategory != "" {
-		return strings.Title(tags.SchoolCategory)
+		return caser.String(tags.SchoolCategory)
 	}
 	if tags.Education != "" {
-		return strings.Title(tags.Education)
+		return caser.String(tags.Education)
 	}
 	if tags.EducationType != "" {
-		return strings.Title(tags.EducationType)
+		return caser.String(tags.EducationType)
 	}
 	if tags.School != "" {
-		return strings.Title(tags.School)
+		return caser.String(tags.School)
 	}
 	return "Unknown"
 }
@@ -491,7 +495,10 @@ func determineSchoolRating(tags SchoolTags) float64 {
 // The accuracy of this calculation decreases for very small distances and near the poles.
 // It may be better to use OSRM for more accurate routing.
 //
-//	More information here: https://www.nextmv.io/blog/haversine-vs-osrm-distance-and-cost-experiments-on-a-vehicle-routing-problem-vrp
+//		More information here: https://www.nextmv.io/blog/haversine-vs-osrm-distance-and-cost-experiments-on-a-vehicle-routing-problem-vrp
+//	 Optionally, we could use the Google Maps API to get the distance between two points,
+//		or implement a service in Rust for performance.
+//		Ultimately, it comes down to what's more expensive? Server or API.
 func calculateDistance(lat1, lon1, lat2, lon2 float64) float64 {
 	const R = 6371.0 // Earth's radius in kilometers
 
