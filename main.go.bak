@@ -1,0 +1,214 @@
+// main.go
+package main
+
+import (
+    "encoding/json"
+    "fmt"
+    "io/ioutil"
+    "net/http"
+    "net/url"
+    "os"
+    "regexp"
+    "strings"
+    "time"
+)
+
+type PropertyService struct {
+    httpClient *http.Client
+}
+
+type PropertyInfo struct {
+    Address     string         `json:"address"`
+    Coordinates Coordinates    `json:"coordinates"`
+    Details     PropertyDetails `json:"details"`
+    Schools     []School       `json:"schools"`
+}
+
+type Coordinates struct {
+    Lat float64 `json:"lat"`
+    Lon float64 `json:"lon"`
+}
+
+type PropertyDetails struct {
+    Size        string  `json:"size"`
+    Rooms       int     `json:"rooms"`
+    Value       float64 `json:"value"`
+    LastUpdated string  `json:"last_updated"`
+}
+
+type School struct {
+    Name     string  `json:"name"`
+    Distance float64 `json:"distance_km"`
+    Rating   float64 `json:"rating"`
+    Type     string  `json:"type"`
+}
+
+func NewPropertyService() *PropertyService {
+    return &PropertyService{
+        httpClient: &http.Client{
+            Timeout: 10 * time.Second,
+        },
+    }
+}
+
+func (s *PropertyService) ValidateAddress(address string) error {
+    // Basic validation
+    if strings.TrimSpace(address) == "" {
+        return fmt.Errorf("address cannot be empty")
+    }
+
+    // Check for minimum components (street, city, state)
+    parts := strings.Split(address, ",")
+    if len(parts) < 3 {
+        return fmt.Errorf("address must include street, city, and state")
+    }
+
+    // Basic format validation using regex
+    addressRegex := regexp.MustCompile(`^\d+\s+[A-Za-z0-9\s.-]+,\s*[A-Za-z\s]+,\s*[A-Z]{2}\s*\d{5}?$`)
+    if !addressRegex.MatchString(strings.TrimSpace(address)) {
+        return fmt.Errorf("invalid address format")
+    }
+
+    return nil
+}
+
+func (s *PropertyService) GetPropertyInfo(address string) (*PropertyInfo, error) {
+    if err := s.ValidateAddress(address); err != nil {
+        return nil, fmt.Errorf("address validation failed: %w", err)
+    }
+
+    // Geocode the address using Nominatim
+    coords, err := s.geocodeAddress(address)
+    if err != nil {
+        return nil, fmt.Errorf("geocoding failed: %w", err)
+    }
+
+    // Get property details
+    details, err := s.getPropertyDetails(coords)
+    if err != nil {
+        return nil, fmt.Errorf("failed to get property details: %w", err)
+    }
+
+    // Get nearby schools
+    schools, err := s.getNearbySchools(coords)
+    if err != nil {
+        return nil, fmt.Errorf("failed to get nearby schools: %w", err)
+    }
+
+    return &PropertyInfo{
+        Address:     address,
+        Coordinates: *coords,
+        Details:     *details,
+        Schools:     schools,
+    }, nil
+}
+
+func (s *PropertyService) geocodeAddress(address string) (*Coordinates, error) {
+    endpoint := fmt.Sprintf(
+        "https://nominatim.openstreetmap.org/search?q=%s&format=json&limit=1",
+        url.QueryEscape(address),
+    )
+
+    req, err := http.NewRequest("GET", endpoint, nil)
+    if err != nil {
+        return nil, err
+    }
+    req.Header.Set("User-Agent", "PropertyInfoService/1.0")
+
+    resp, err := s.httpClient.Do(req)
+    if err != nil {
+        return nil, err
+    }
+    defer resp.Body.Close()
+
+    var results []struct {
+        Lat string `json:"lat"`
+        Lon string `json:"lon"`
+    }
+
+    if err := json.NewDecoder(resp.Body).Decode(&results); err != nil {
+        return nil, err
+    }
+
+    if len(results) == 0 {
+        return nil, fmt.Errorf("address not found")
+    }
+
+    lat, _ := strconv.ParseFloat(results[0].Lat, 64)
+    lon, _ := strconv.ParseFloat(results[0].Lon, 64)
+
+    return &Coordinates{
+        Lat: lat,
+        Lon: lon,
+    }, nil
+}
+
+func (s *PropertyService) getPropertyDetails(coords *Coordinates) (*PropertyDetails, error) {
+    // This would typically call a county/municipal API
+    // For MVP, returning mock data
+    return &PropertyDetails{
+        Size:        "2,500 sq ft",
+        Rooms:       4,
+        Value:       450000.00,
+        LastUpdated: time.Now().Format(time.RFC3339),
+    }, nil
+}
+
+func (s *PropertyService) getNearbySchools(coords *Coordinates) ([]School, error) {
+    // Overpass API query for schools within 2km
+    query := fmt.Sprintf(
+        `[out:json];
+        (
+          node["amenity"="school"](around:2000,%f,%f);
+          way["amenity"="school"](around:2000,%f,%f);
+          relation["amenity"="school"](around:2000,%f,%f);
+        );
+        out body;`,
+        coords.Lat, coords.Lon,
+        coords.Lat, coords.Lon,
+        coords.Lat, coords.Lon,
+    )
+
+    endpoint := "https://overpass-api.de/api/interpreter"
+    resp, err := s.httpClient.Post(endpoint, "text/plain", strings.NewReader(query))
+    if err != nil {
+        return nil, err
+    }
+    defer resp.Body.Close()
+
+    // Process response and return schools
+    // For MVP, returning mock data
+    return []School{
+        {
+            Name:     "Lincoln Elementary",
+            Distance: 0.8,
+            Rating:   4.5,
+            Type:     "Public Elementary",
+        },
+        {
+            Name:     "Washington Middle School",
+            Distance: 1.2,
+            Rating:   4.0,
+            Type:     "Public Middle",
+        },
+    }, nil
+}
+
+func main() {
+    if len(os.Args) < 2 {
+        fmt.Println("Usage: property-service \"<address>\"")
+        os.Exit(1)
+    }
+
+    address := os.Args[1]
+    service := NewPropertyService()
+    
+    info, err := service.GetPropertyInfo(address)
+    if err != nil {
+        fmt.Printf("Error: %v\n", err)
+        os.Exit(1)
+    }
+
+    output, _ := json.MarshalIndent(info, "", "  ")
+    fmt.Println(string(output))
+}
