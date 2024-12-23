@@ -15,6 +15,24 @@ type Server struct {
 	service *property.Service
 }
 
+// CORS middleware to handle cross-origin requests
+func corsMiddleware(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		// Set CORS headers
+		w.Header().Set("Access-Control-Allow-Origin", "http://localhost:4321")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+
+		// Handle preflight requests
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+
+		next(w, r)
+	}
+}
+
 func (s *Server) handleGetProperty(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -49,7 +67,8 @@ func main() {
 		service: property.NewService(),
 	}
 
-	http.HandleFunc("/property", server.handleGetProperty)
+	// Apply CORS middleware to the property endpoint
+	http.HandleFunc("/property", corsMiddleware(server.handleGetProperty))
 
 	port := ":8080"
 	log.Printf("Starting server on port %s", port)
