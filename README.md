@@ -66,17 +66,10 @@ go test ./...
 
 ### Code Coverage
 
-The project maintains a high level of test coverage:
-
-- Property package: 86.8% coverage
-- Core functionality coverage:
-  - Address validation: 100%
-  - Coordinate validation: 100%
-  - School type determination: 100%
-  - Distance calculation: 100%
-  - Property details retrieval: ~85%
-  - School search: ~85%
-  - Main service functionality: ~85%
+?   	github.com/ssh-keyz/property-details/opencage	[no test files]
+?   	github.com/ssh-keyz/property-details/school	[no test files]
+ok  	github.com/ssh-keyz/property-details	17.095s	coverage: 65.2% of statements
+ok  	github.com/ssh-keyz/property-details/property	0.245s	coverage: 86.8% of statements
 
 To run tests with coverage analysis:
 

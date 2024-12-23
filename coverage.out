@@ -1,9 +1,4 @@
 mode: set
-github.com/ssh-keyz/property-details/main.go:12.13,13.22 1 0
-github.com/ssh-keyz/property-details/main.go:13.22,16.3 2 0
-github.com/ssh-keyz/property-details/main.go:18.2,22.16 4 0
-github.com/ssh-keyz/property-details/main.go:22.16,25.3 2 0
-github.com/ssh-keyz/property-details/main.go:27.2,28.29 2 0
 github.com/ssh-keyz/property-details/property/service.go:22.57,23.38 1 1
 github.com/ssh-keyz/property-details/property/service.go:23.38,25.3 1 1
 github.com/ssh-keyz/property-details/property/service.go:27.2,28.20 2 1
@@ -101,3 +96,14 @@ github.com/ssh-keyz/property-details/property/service.go:321.2,322.35 2 1
 github.com/ssh-keyz/property-details/property/service.go:325.54,327.2 1 1
 github.com/ssh-keyz/property-details/property/service.go:329.64,347.2 11 1
 github.com/ssh-keyz/property-details/property/types.go:45.28,58.2 1 1
+github.com/ssh-keyz/property-details/main.go:18.76,19.32 1 1
+github.com/ssh-keyz/property-details/main.go:19.32,22.3 2 1
+github.com/ssh-keyz/property-details/main.go:24.2,25.19 2 1
+github.com/ssh-keyz/property-details/main.go:25.19,28.3 2 1
+github.com/ssh-keyz/property-details/main.go:31.2,32.16 2 1
+github.com/ssh-keyz/property-details/main.go:32.16,35.3 2 0
+github.com/ssh-keyz/property-details/main.go:37.2,38.16 2 1
+github.com/ssh-keyz/property-details/main.go:38.16,41.3 2 1
+github.com/ssh-keyz/property-details/main.go:43.2,44.33 2 1
+github.com/ssh-keyz/property-details/main.go:47.13,56.55 5 0
+github.com/ssh-keyz/property-details/main.go:56.55,58.3 1 0
