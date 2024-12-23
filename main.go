@@ -18,10 +18,21 @@ type Server struct {
 // CORS middleware to handle cross-origin requests
 func corsMiddleware(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		// Set CORS headers
-		w.Header().Set("Access-Control-Allow-Origin", "http://localhost:4321")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+		// Get the origin from the request header
+		origin := r.Header.Get("Origin")
+
+		// Allow requests from these origins
+		allowedOrigins := map[string]bool{
+			"https://property-details-client.vercel.app": true,
+			"http://localhost:4321":                      true,
+		}
+
+		// If the origin is allowed, set it in the response header
+		if allowedOrigins[origin] {
+			w.Header().Set("Access-Control-Allow-Origin", origin)
+			w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
+			w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+		}
 
 		// Handle preflight requests
 		if r.Method == http.MethodOptions {
