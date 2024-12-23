@@ -1,6 +1,70 @@
 # Property Service
 
-A Go-based service that provides detailed property information based on an address input. This service integrates with various data sources to provide comprehensive property and location details.
+A service that provides detailed information about properties, including nearby schools and geographical data.
+
+## Running the API Server
+
+1. Build and run the server:
+```bash
+go run main.go
+```
+
+The server will start on port 8080.
+
+## API Endpoints
+
+### Get Property Information
+
+Retrieves detailed information about a property including its location, details, and nearby schools.
+
+```
+GET /property?address={urlEncodedAddress}
+```
+
+#### Parameters
+- `address` (required): The property address, URL encoded
+
+#### Example Request
+```bash
+curl "http://localhost:8080/property?address=1600%20Amphitheatre%20Parkway%2C%20Mountain%20View%2C%20CA%2094043"
+```
+
+#### Example Response
+```json
+{
+  "address": "1600 Amphitheatre Parkway, Mountain View, CA 94043",
+  "coordinates": {
+    "lat": 37.42248575,
+    "lon": -122.08558456613565
+  },
+  "details": {
+    "size": "Mock-Data",
+    "rooms": 3,
+    "value": 500000,
+    "last_updated": "2024-12-22T16:10:22-08:00"
+  },
+  "schools": [
+    {
+      "name": "Example School",
+      "distance_km": 1.15,
+      "rating": 4.5,
+      "type": "General School"
+    }
+  ]
+}
+```
+
+#### Response Codes
+- `200 OK`: Successfully retrieved property information
+- `400 Bad Request`: Missing or invalid address parameter
+- `500 Internal Server Error`: Server error or invalid address format
+
+## Development
+
+### Running Tests
+```bash
+go test -v
+```
 
 ## Features
 
@@ -55,14 +119,6 @@ The service will return property information in JSON format.
 ## Dependencies
 
 - `golang.org/x/text` - Text processing utilities
-
-## Development
-
-To run tests:
-
-```bash
-go test ./...
-```
 
 ### Code Coverage
 
