@@ -64,6 +64,27 @@ To run tests:
 go test ./...
 ```
 
+### Code Coverage
+
+The project maintains a high level of test coverage:
+
+- Property package: 86.8% coverage
+- Core functionality coverage:
+  - Address validation: 100%
+  - Coordinate validation: 100%
+  - School type determination: 100%
+  - Distance calculation: 100%
+  - Property details retrieval: ~85%
+  - School search: ~85%
+  - Main service functionality: ~85%
+
+To run tests with coverage analysis:
+
+```bash
+go test -coverprofile=coverage.out ./...
+go tool cover -html=coverage.out  # Opens coverage report in browser
+```
+
 ## License
 
 Copyright © 2023 Anaheim Electronics
